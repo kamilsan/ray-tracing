@@ -1,0 +1,14 @@
+- Think about Renderer.render function arguments & return type (mayby return pixels array or take canvas and return imageData?)
+- Build it as an engine and name it!
+- Projection with Field of View angle
+- Test lighting
+- Other shapes (rectangle, triangle, box, elipsoid, torus)
+- Refraction and Schick's approximation
+- Environment mapping
+- Textures
+- Mesh rendering
+- Depth od field
+- Cook-Torrance
+- Postprocessing (gamma(?), HDR, bloom)
+- Path tracing(?), Photon mapping
+- Orthographic projection(?)
