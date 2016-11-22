@@ -1,3 +1,5 @@
+//Copyright (c) 2016 Kamil All Rights Reserved.
+
 "use strict";
 
 function Vector(x, y, z)
