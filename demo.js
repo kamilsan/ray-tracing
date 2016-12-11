@@ -45,22 +45,22 @@ function webLoad()
   var wallMaterial1 = new Material(
     new Vector(1.0, 0.5, 0.5),
     1 / Math.PI,
-    0.05,
-    32,
+    0.01,
+    64,
     0.0
   );
   var wallMaterial2 = new Material(
     new Vector(0.5, 0.5, 1.0),
     1 / Math.PI,
-    0.05,
-    32,
+    0.01,
+    64,
     0.0
   );
   var floorMaterial = new Material(
     new Vector(1.0, 1.0, 1.0),
     1 / Math.PI,
-    0.05,
-    32,
+    0.01,
+    64,
     0.0
   );
 
@@ -108,15 +108,18 @@ function webLoad()
     sphereMaterial
   ));
   scene.addLight(new PointLight(
-    new Vector(0, 1, 0),
+    new Vector(0, 0.9, 0),
     new Vector(1, 1, 1),
-    9,
+    35,
     Attenuation.Default
   ));
 
   var renderer = new RayTracer.Renderer(window.innerWidth, window.innerHeight);
   renderer.SSAA = false;
   renderer.SSAA_SAMPLES = 8;
+  renderer.RECURSION_DEPTH = 4;
+  renderer.MC_DEPTH = 1;
+  renderer.MC_SAMPLES = 216;
   //renderer.postprocess = vignetting;
 
   var time = Date.now();

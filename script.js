@@ -606,9 +606,30 @@ Ellipse.prototype =
 };
 
 
+function getSampleVector(r1, r2)
+{
+  var sinTheta = Math.sqrt(1 - r1 * r1);//r1 = cos(theta)
+  var phi = 2 * Math.PI * r2;
+  var x = sinTheta * Math.cos(phi);
+  var z = sinTheta * Math.sin(phi);
+  return new Vector(x, r1, z);
+}
+
+function createCoordinationSystem(normal)
+{
+  var tangent;
+  if(Math.abs(normal.x) > Math.abs(normal.y))
+      tangent = (new Vector(normal.z, 0, -normal.x)).div(normal.z * normal.z + normal.x * normal.x);
+  else
+      tangent = (new Vector(0, -normal.z, normal.y)).div(normal.z * normal.z + normal.y * normal.y);
+  var bitangent = normal.cross(tangent);
+
+  return { tangent: tangent, bitangent: bitangent };
+}
+
 
 var RayTracer = {};
-RayTracer.traceRay = function(ray, scene, camera, depth)
+RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
 {
   var color = new Vector(0, 0, 0);
 
@@ -636,7 +657,7 @@ RayTracer.traceRay = function(ray, scene, camera, depth)
     {
       var viewReflected = Vector.reflect(toEye.clone().mul(-1), normal);
       var reflectionRay = new Ray(intersectionPoint.clone().add(viewReflected.clone().mul(0.00000001)), viewReflected);
-      var reflectionColor = RayTracer.traceRay(reflectionRay, scene, camera, depth - 1);
+      var reflectionColor = RayTracer.traceRay(reflectionRay, scene, camera, depth - 1, mcDepth, samples);
       color.add(reflectionColor.mul(object.material.reflectionFactor));
     }
 
@@ -655,6 +676,27 @@ RayTracer.traceRay = function(ray, scene, camera, depth)
         }
       }
 
+      var indirectLighting = new Vector(0, 0, 0);
+      if(mcDepth > 0)
+      {
+        var basis = createCoordinationSystem(normal);
+        var cosTheta;
+        var sampleVector, sampleTransformed, mcRay;
+        for(var i = 0; i < samples; ++i)
+        {
+          cosTheta = Math.random();
+          sampleVector = getSampleVector(cosTheta, Math.random());
+          sampleTransformed = new Vector(sampleVector.x * basis.tangent.x + sampleVector.y * normal.x + sampleVector.z * basis.bitangent.x,
+                                         sampleVector.x * basis.tangent.y + sampleVector.y * normal.y + sampleVector.z * basis.bitangent.y,
+                                         sampleVector.x * basis.tangent.z + sampleVector.y * normal.z + sampleVector.z * basis.bitangent.z);
+          mcRay = new Ray(intersectionPoint.clone().add(sampleTransformed.clone().mul(0.000001)), sampleTransformed);
+          indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, depth, mcDepth - 1, samples).mul(cosTheta));
+        }
+      }
+      if(samples !== 0)
+        indirectLighting.mul(2 / samples);//x/(1/2pi)/pi = 2xpi/pi = 2x
+      color.add(Vector.componetesMul(object.material.color, indirectLighting).mul(object.material.diffuseFactor));
+
       if(!inShadow)
       {
         var lighting = scene.lights[n].calcLighting(intersectionPoint, normal, toEye);
@@ -662,7 +704,7 @@ RayTracer.traceRay = function(ray, scene, camera, depth)
         lighting.specular = object.material.specularFactor * Math.pow(lighting.specular, object.material.specularPower);
 
         color.add(Vector.componetesMul(scene.lights[n].color, object.material.color).mul(
-          lighting.diffuse * scene.lights[n].intensity * object.material.diffuseFactor));
+          lighting.diffuse * scene.lights[n].intensity * object.material.diffuseFactor / Math.PI));
         color.add(Vector.mul(scene.lights[n].color, lighting.specular * scene.lights[n].intensity));
       }
     }
@@ -683,6 +725,8 @@ RayTracer.Renderer = function(width, height)
   this._SSAA = false;
   this._SSAA_SAMPLES = 16;
   this._RECURSION_DEPTH = 8;
+  this._MC_DEPTH = 1;
+  this._MC_SAMPLES = 32;
 
   //Experimental!
   this._postprocess = function(color, x, y, width, height) {};
@@ -698,6 +742,8 @@ RayTracer.Renderer.prototype =
   get SSAA() { return this._SSAA; },
   get SSAA_SAMPLES() { return this._SSAA_SAMPLES; },
   get RECURSION_DEPTH() { return this._RECURSION_DEPTH; },
+  get MC_DEPTH() { return this._MC_DEPTH; },
+  get MC_SAMPLES() { return this._MC_SAMPLES; },
 
   set width(value)
   {
@@ -715,6 +761,8 @@ RayTracer.Renderer.prototype =
   set SSAA(value) { this._SSAA = value; },
   set SSAA_SAMPLES(value) { this._SSAA_SAMPLES = value; },
   set RECURSION_DEPTH(value) { this._RECURSION_DEPTH = value; },
+  set MC_DEPTH(value) { this._MC_DEPTH = value; },
+  set MC_SAMPLES(value) { this._MC_SAMPLES = value; },
 
   render: function(scene, camera)
   {
@@ -733,7 +781,8 @@ RayTracer.Renderer.prototype =
       {
         var i = (y * width + x) * 4;
         var color = new Vector(0, 0, 0);
-
+        if(i % 200 === 0)
+          document.title = "Ray Tracing - " + (100 * i / (width * height * 4)).toFixed(2).toString() + "%";
         if(this._SSAA)
         {
           for(var n = 0; n < this._SSAA_SAMPLES; ++n)
@@ -745,7 +794,7 @@ RayTracer.Renderer.prototype =
             scaledY = -(y - this._halfHeight + jitterY) / this._halfHeight;
 
             cameraRay = camera.getCameraRay(scaledX, scaledY);
-            color = color.add(RayTracer.traceRay(cameraRay, scene, camera, this._RECURSION_DEPTH));
+            color = color.add(RayTracer.traceRay(cameraRay, scene, camera, this._RECURSION_DEPTH, this._MC_DEPTH, this._MC_SAMPLES));
 
             this._postprocess(color, x, y, this._width, this._height);
           }
@@ -757,7 +806,7 @@ RayTracer.Renderer.prototype =
           scaledY = -(y - this._halfHeight) / this._halfHeight;
 
           cameraRay = camera.getCameraRay(scaledX, scaledY);
-          color = RayTracer.traceRay(cameraRay, scene, camera, 8);
+          color = RayTracer.traceRay(cameraRay, scene, camera, this._RECURSION_DEPTH, this._MC_DEPTH, this._MC_SAMPLES);
 
           this._postprocess(color, x, y, this._width, this._height);
           color.mul(255);
