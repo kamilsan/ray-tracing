@@ -2,6 +2,10 @@
 
 "use strict";
 
+////////////////////
+// Math
+////////////////////
+
 function Vector(x, y, z)
 {
   this._x = x;
@@ -128,7 +132,7 @@ Vector.div = function(a, r)
 {
   return new Vector(a.x / r, a.y / r, a.z / r);
 };
-Vector.componetesMul = function(a, b)
+Vector.componetesMul = function(a, b) //useful for operations with colors
 {
   return new Vector(a.x * b.x, a.y * b.y, a.z * b.z);
 };
@@ -172,6 +176,9 @@ Ray.prototype =
   }
 };
 
+////////////////////
+// Scene elements
+////////////////////
 
 function Camera(position, forward, up)
 {
@@ -231,7 +238,9 @@ Scene.prototype =
   }
 };
 
-
+////////////////////
+// Material
+////////////////////
 function Material(color, kDiffuse, kSpecular, specularPower, kReflection)
 {
   this._color = color;
@@ -279,12 +288,15 @@ Attenuation.prototype =
 
 Attenuation.Default = new Attenuation(1, 0, 1);
 
-//(should) inherit form Light class and have virtual methods:
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                            Lights
+//   inherits form Light class and have virtual methods:
 //  - { diffuse, specular } calcLighting(Vector intersectionPoint, Vector normal, Vector toEye),
 //  - Ray getShadowRay(Vector intersectionPoint)
 //  - bool isInShadow(Ray shadowRay, float t)
 //  - float intensity (getter)
-
+/////////////////////////////////////////////////////////////////////////////////////////////////////
 function DirectionalLight(direction, color, intensity)
 {
   this._direction = direction.normalize();
@@ -316,7 +328,7 @@ DirectionalLight.prototype =
       specular = Math.max(Vector.dot(halfVector, normal), 0.0);
     }
 
-    return { diffuse: diffuse, specular: specular };
+    return { diffuse: diffuse, specular: specular, attenuation: 1 };
   },
 
   getShadowRay: function(intersectionPoint)//virtual
@@ -365,15 +377,18 @@ PointLight.prototype =
     var attenuation = 1 / (this._attenuation.quadratic * length * length +
                       this._attenuation.linear * length +
                       this._attenuation.constant);
-    var diffuse = attenuation * Math.max(Vector.dot(toLight, normal), 0);
+
+    var lambertian = Vector.dot(toLight, normal);
     var specular = 0;
-    if(diffuse > 0)
+    var diffuse = 0;
+    if(lambertian > 0)
     {
+      diffuse = Math.max(lambertian, 0);
       var halfVector = Vector.add(toEye, toLight).normalize();
-      specular = attenuation * Math.max(Vector.dot(halfVector, normal), 0.0);
+      specular = Math.max(Vector.dot(halfVector, normal), 0);
     }
 
-    return { diffuse: diffuse, specular: specular };
+    return { diffuse: diffuse, specular: specular, attenuation: attenuation };
   },
 
   getShadowRay: function(intersectionPoint)//virtual
@@ -441,13 +456,13 @@ SpotLight.prototype =
     }
     else
     {
-      diffuse = attenuation * (diffuse - this._cosAngle) / this._cosAngle;
+      diffuse = (diffuse - this._cosAngle) / this._cosAngle;
 
       var halfVector = Vector.add(toEye, toLight).normalize();
-      specular = attenuation * Math.max(Vector.dot(halfVector, normal), 0.0);
+      specular = Math.max(Vector.dot(halfVector, normal), 0.0);
     }
 
-    return { diffuse: diffuse, specular: specular };
+    return { diffuse: diffuse, specular: specular, attenuation: attenuation };
   },
 
   getShadowRay: function(intersectionPoint)//virtual
@@ -465,12 +480,14 @@ SpotLight.prototype =
     else return false;
   }
 };
-
+////////////////////////////////////////////////////////
+//                     Objects
 //Classes that would be inherited from Object class
 //they should have this virtual methods:
 //  - Vector getNormalAt(Vector point)
 //  - float  intersects(Ray ray)
 //They also have to have material with its getter
+///////////////////////////////////////////////////////
 function Sphere(center, radius, material)
 {
   this._center = center;
@@ -490,11 +507,6 @@ Sphere.prototype =
   set radius(value) { this._radius = value; },
   set material(value) { this._material = value; },
 
-  getNormalAt: function(point)
-  {
-    return point.clone().sub(this._center).div(this._radius);
-  },
-
   intersects: function(ray)
   {
     var centerToOrigin = ray.origin.clone().sub(this._center);
@@ -508,6 +520,10 @@ Sphere.prototype =
     var t1 = (-b - delta) / 2;
     var t2 = (-b + delta) / 2;
     return (t1 < t2 ? t1 : t2);
+  },
+  getNormalAt: function(point)
+  {
+    return point.clone().sub(this._center).div(this._radius);
   }
 };
 
@@ -541,7 +557,7 @@ Plane.prototype =
     return t;
   },
 
-  getNormalAt: function(point)//its a virtual method
+  getNormalAt: function(point)//it is a virtual method
   {
     return this._normal;
   }
@@ -591,7 +607,7 @@ Ellipse.prototype =
       var distVector = intersectionPoint.clone().sub(this._center);
       var distXSq = distVector.dot(this._tangent);
       distXSq *= distXSq;
-      var distYSq = distVector.lengthSq() - distXSq;
+      var distYSq = distVector.lengthSq() - distXSq;//Pythagoras
       var d = distXSq / this._horizontalRadiusSq + distYSq / this._verticalRadiusSq;
       if(d > 1)
         t = -1;//reject
@@ -599,13 +615,13 @@ Ellipse.prototype =
     return t;
   },
 
-  getNormalAt: function(point)//its a virtual method
+  getNormalAt: function(point)//it is a virtual method
   {
     return this._normal;
   }
 };
 
-
+//Function used in sampling
 function getSampleVector(r1, r2)
 {
   var sinTheta = Math.sqrt(1 - r1 * r1);//r1 = cos(theta)
@@ -614,7 +630,7 @@ function getSampleVector(r1, r2)
   var z = sinTheta * Math.sin(phi);
   return new Vector(x, r1, z);
 }
-
+//As above
 function createCoordinationSystem(normal)
 {
   var tangent;
@@ -627,13 +643,14 @@ function createCoordinationSystem(normal)
   return { tangent: tangent, bitangent: bitangent };
 }
 
-
+//The name of the game!
+//TODO: Probably I should put more stuff in it and name this more fancy then just "RayTracer"
 var RayTracer = {};
 RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
 {
   var color = new Vector(0, 0, 0);
 
-  //Depth test
+  //Depth test - finding closest object
   var minT = 1e12, currentT;
   var object = null;
   for(var i = 0; i < scene.objects.length; ++i)
@@ -656,16 +673,42 @@ RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
     if(object.material.reflectionFactor > 0 && depth > 0)
     {
       var viewReflected = Vector.reflect(toEye.clone().mul(-1), normal);
+      //below: small bias to prevent self intersection
       var reflectionRay = new Ray(intersectionPoint.clone().add(viewReflected.clone().mul(0.00000001)), viewReflected);
       var reflectionColor = RayTracer.traceRay(reflectionRay, scene, camera, depth - 1, mcDepth, samples);
       color.add(reflectionColor.mul(object.material.reflectionFactor));
     }
 
     color.add(Vector.componetesMul(object.material.color, scene.ambient));
+
+    //Path tracing below!
+    //It is using Monte Carlo for estimating integral in rendering equation
+    var indirectLighting = new Vector(0, 0, 0);
+    if(mcDepth > 0 && samples > 0)
+    {
+      var basis = createCoordinationSystem(normal);
+      var cosTheta;
+      var sampleVector, sampleTransformed, mcRay;
+      for(var i = 0; i < samples; ++i)
+      {
+        cosTheta = Math.random();//This value will be used to genarate random sample and in rendering equation
+        sampleVector = getSampleVector(cosTheta, Math.random());
+        sampleTransformed = new Vector(sampleVector.x * basis.tangent.x + sampleVector.y * normal.x + sampleVector.z * basis.bitangent.x,
+                                       sampleVector.x * basis.tangent.y + sampleVector.y * normal.y + sampleVector.z * basis.bitangent.y,
+                                       sampleVector.x * basis.tangent.z + sampleVector.y * normal.z + sampleVector.z * basis.bitangent.z);
+        mcRay = new Ray(intersectionPoint.clone().add(sampleTransformed.clone().mul(0.000001)), sampleTransformed);
+        indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, depth, mcDepth - 1, samples).mul(cosTheta));
+      }
+      indirectLighting.mul(2 / samples);//x/(1/2pi)/pi = 2xpi/pi = 2x
+      color.add(Vector.componetesMul(object.material.color, indirectLighting).mul(object.material.diffuseFactor));
+    }
+
+    //Direct illumination
     for(var n = 0; n < scene.lights.length; ++n)
     {
       var shadowRay = scene.lights[n].getShadowRay(intersectionPoint);
       var inShadow = false;
+      //Searching for objects occluding light
       for(var i = 0; i < scene.objects.length; ++i)
       {
         var t = scene.objects[i].intersects(shadowRay);
@@ -675,40 +718,17 @@ RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
           break;
         }
       }
-
-      var indirectLighting = new Vector(0, 0, 0);
-      if(mcDepth > 0)
-      {
-        var basis = createCoordinationSystem(normal);
-        var cosTheta;
-        var sampleVector, sampleTransformed, mcRay;
-        for(var i = 0; i < samples; ++i)
-        {
-          cosTheta = Math.random();
-          sampleVector = getSampleVector(cosTheta, Math.random());
-          sampleTransformed = new Vector(sampleVector.x * basis.tangent.x + sampleVector.y * normal.x + sampleVector.z * basis.bitangent.x,
-                                         sampleVector.x * basis.tangent.y + sampleVector.y * normal.y + sampleVector.z * basis.bitangent.y,
-                                         sampleVector.x * basis.tangent.z + sampleVector.y * normal.z + sampleVector.z * basis.bitangent.z);
-          mcRay = new Ray(intersectionPoint.clone().add(sampleTransformed.clone().mul(0.000001)), sampleTransformed);
-          indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, depth, mcDepth - 1, samples).mul(cosTheta));
-        }
-      }
-      if(samples !== 0)
-        indirectLighting.mul(2 / samples);//x/(1/2pi)/pi = 2xpi/pi = 2x
-      color.add(Vector.componetesMul(object.material.color, indirectLighting).mul(object.material.diffuseFactor));
-
       if(!inShadow)
       {
         var lighting = scene.lights[n].calcLighting(intersectionPoint, normal, toEye);
 
-        lighting.specular = object.material.specularFactor * Math.pow(lighting.specular, object.material.specularPower);
-
         color.add(Vector.componetesMul(scene.lights[n].color, object.material.color).mul(
-          lighting.diffuse * scene.lights[n].intensity * object.material.diffuseFactor / Math.PI));
-        color.add(Vector.mul(scene.lights[n].color, lighting.specular * scene.lights[n].intensity));
+          lighting.diffuse * lighting.attenuation * scene.lights[n].intensity * object.material.diffuseFactor / Math.PI));
+        color.add(Vector.mul(scene.lights[n].color, scene.lights[n].intensity *
+          object.material.specularFactor * lighting.attenuation * Math.pow(lighting.specular, object.material.specularPower)));
       }
     }
-    color.clamp(0.0, 1.0);
+    //color.clamp(0.0, 1.0);
   }
   return color;
 };

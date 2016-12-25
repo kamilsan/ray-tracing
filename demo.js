@@ -2,6 +2,7 @@
 
 window.onload = webLoad;
 
+//Sample postprocess function
 function vignetting(color, x, y, width, height)
 {
   var min = 0.7;
@@ -13,14 +14,14 @@ function vignetting(color, x, y, width, height)
   var relX = x - halfWidth;
   var relY = y - halfHeight;
 
-  halfWidth *= 1.2;//bigger range of light region
+  halfWidth *= 1.2;//bigger range of lighter region
   halfHeight *= 1.2;
 
   var dist = relX * relX / (halfWidth * halfWidth) + relY * relY / (halfHeight * halfHeight);
   if(dist < 1)
   {
     var oneMinusDist = 1 - dist;
-    var ratio = oneMinusDist * oneMinusDist * (max - min) + min;
+    var ratio = oneMinusDist * oneMinusDist * (max - min) + min;//squere fallout for better visual effect
     color.x *= ratio;
     color.y *= ratio;
     color.z *= ratio;
@@ -35,36 +36,38 @@ function vignetting(color, x, y, width, height)
 
 function webLoad()
 {
+  //Materials
   var sphereMaterial = new Material(
-    new Vector(1.0, 1.0, 1.0),
-    0.01,
-    0.0,
-    124,
-    0.99
+    new Vector(1.0, 1.0, 1.0),//color
+    0.01,//diffuse
+    0.01,//specular
+    124,//specular power
+    0.99//reflectivity
   );
   var wallMaterial1 = new Material(
     new Vector(1.0, 0.5, 0.5),
     1 / Math.PI,
     0.01,
-    64,
+    16,
     0.0
   );
   var wallMaterial2 = new Material(
     new Vector(0.5, 0.5, 1.0),
     1 / Math.PI,
     0.01,
-    64,
+    16,
     0.0
   );
   var floorMaterial = new Material(
     new Vector(1.0, 1.0, 1.0),
     1 / Math.PI,
     0.01,
-    64,
+    16,
     0.0
   );
 
-  var scene = new Scene(new Vector(0.02, 0.02, 0.02));
+  var scene = new Scene(new Vector(0, 0, 0));//No need to use ambient light! Yay!
+  //Camera - position, forward, up
   var camera = new Camera(new Vector(0, 0, -1), new Vector(0, 0, 1), new Vector(0, 1, 0));
 
   scene.addObject(new Plane(
@@ -114,14 +117,16 @@ function webLoad()
     Attenuation.Default
   ));
 
+  //Initializing renderer and some settings
   var renderer = new RayTracer.Renderer(window.innerWidth, window.innerHeight);
-  renderer.SSAA = false;
+  renderer.SSAA = true;
   renderer.SSAA_SAMPLES = 8;
-  renderer.RECURSION_DEPTH = 4;
+  renderer.RECURSION_DEPTH = 16;
   renderer.MC_DEPTH = 1;
-  renderer.MC_SAMPLES = 216;
+  renderer.MC_SAMPLES = 64;
   //renderer.postprocess = vignetting;
 
+  //This is for benchmarking
   var time = Date.now();
 
   var canvas = renderer.render(scene, camera);

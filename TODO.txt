@@ -1,17 +1,17 @@
-- Comment it!
+- Projection with Field of View angle
+- Orthographic projection(?)
 - Clear color
 - Build it as an engine and name it!
-- Think about Renderer.render function arguments & return type (mayby return pixels array or take canvas and return imageData?)
-- Projection with Field of View angle
-- Test lighting
-- Other shapes (rectangle, triangle, box, elipsoid, torus)
+- Preview rendering (rendering selected region of viewport)
+- Lights' radius(?)
+- Emissive surfaces
+- Other shapes (rectangle, triangle, box, elipsoid, torus, cylinder, cone)
 - Refraction and Schick's approximation
 - Environment mapping
 - Textures
 - Mesh rendering
-- Depth od field
+- Depth of field
 - Cook-Torrance
 - Quasi Monte Carlo/Importance Sampling
-- Postprocessing (gamma(?), HDR, bloom)
+- Gamma, HDR, Bloom(?)
 - Photon mapping(?)
-- Orthographic projection(?)
