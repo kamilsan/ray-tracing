@@ -621,14 +621,15 @@ Ellipse.prototype =
   }
 };
 
-//Function used in sampling
-function getSampleVector(r1, r2)
+//Function used in importance sampling
+function getCosineWeightedSample(r1, r2)
 {
-  var sinTheta = Math.sqrt(1 - r1 * r1);//r1 = cos(theta)
+  var sinTheta = Math.sqrt(r1);
+  var cosTheta = Math.sqrt(1 - sinTheta * sinTheta);
   var phi = 2 * Math.PI * r2;
   var x = sinTheta * Math.cos(phi);
   var z = sinTheta * Math.sin(phi);
-  return new Vector(x, r1, z);
+  return new Vector(x, cosTheta, z);
 }
 //As above
 function createCoordinationSystem(normal)
@@ -678,11 +679,12 @@ RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
       var reflectionColor = RayTracer.traceRay(reflectionRay, scene, camera, depth - 1, mcDepth, samples);
       color.add(reflectionColor.mul(object.material.reflectionFactor));
     }
-
     color.add(Vector.componetesMul(object.material.color, scene.ambient));
 
+    var albedo = object.material.color.clone().mul(object.material.diffuseFactor);
+
     //Path tracing below!
-    //It is using Monte Carlo for estimating integral in rendering equation
+    //It uses MC & Importance Sampling for estimating integral in rendering equation
     var indirectLighting = new Vector(0, 0, 0);
     if(mcDepth > 0 && samples > 0)
     {
@@ -691,16 +693,15 @@ RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
       var sampleVector, sampleTransformed, mcRay;
       for(var i = 0; i < samples; ++i)
       {
-        cosTheta = Math.random();//This value will be used to genarate random sample and in rendering equation
-        sampleVector = getSampleVector(cosTheta, Math.random());
+        sampleVector = getCosineWeightedSample(Math.random(), Math.random());
         sampleTransformed = new Vector(sampleVector.x * basis.tangent.x + sampleVector.y * normal.x + sampleVector.z * basis.bitangent.x,
                                        sampleVector.x * basis.tangent.y + sampleVector.y * normal.y + sampleVector.z * basis.bitangent.y,
                                        sampleVector.x * basis.tangent.z + sampleVector.y * normal.z + sampleVector.z * basis.bitangent.z);
         mcRay = new Ray(intersectionPoint.clone().add(sampleTransformed.clone().mul(0.000001)), sampleTransformed);
-        indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, depth, mcDepth - 1, samples).mul(cosTheta));
+        indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, depth, mcDepth - 1, samples));
       }
-      indirectLighting.mul(2 / samples);//x/(1/2pi)/pi = 2xpi/pi = 2x
-      color.add(Vector.componetesMul(object.material.color, indirectLighting).mul(object.material.diffuseFactor));
+      indirectLighting.mul(1 / samples);
+      color.add(Vector.componetesMul(albedo, indirectLighting));
     }
 
     //Direct illumination
@@ -722,8 +723,8 @@ RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
       {
         var lighting = scene.lights[n].calcLighting(intersectionPoint, normal, toEye);
 
-        color.add(Vector.componetesMul(scene.lights[n].color, object.material.color).mul(
-          lighting.diffuse * lighting.attenuation * scene.lights[n].intensity * object.material.diffuseFactor / Math.PI));
+        color.add(Vector.componetesMul(scene.lights[n].color, albedo).mul(
+          lighting.diffuse * lighting.attenuation * scene.lights[n].intensity / Math.PI));
         color.add(Vector.mul(scene.lights[n].color, scene.lights[n].intensity *
           object.material.specularFactor * lighting.attenuation * Math.pow(lighting.specular, object.material.specularPower)));
       }

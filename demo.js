@@ -40,7 +40,7 @@ function webLoad()
   var sphereMaterial = new Material(
     new Vector(1.0, 1.0, 1.0),//color
     0.01,//diffuse
-    0.01,//specular
+    0.0,//specular
     124,//specular power
     0.99//reflectivity
   );
@@ -112,18 +112,18 @@ function webLoad()
   ));
   scene.addLight(new PointLight(
     new Vector(0, 0.9, 0),
-    new Vector(1, 1, 1),
-    35,
+    new Vector(0.9, 0.9, 1),
+    36,
     Attenuation.Default
   ));
 
   //Initializing renderer and some settings
   var renderer = new RayTracer.Renderer(window.innerWidth, window.innerHeight);
-  renderer.SSAA = true;
-  renderer.SSAA_SAMPLES = 8;
+  renderer.SSAA = false;
+  renderer.SSAA_SAMPLES = 64;
   renderer.RECURSION_DEPTH = 16;
   renderer.MC_DEPTH = 1;
-  renderer.MC_SAMPLES = 64;
+  renderer.MC_SAMPLES = 216;
   //renderer.postprocess = vignetting;
 
   //This is for benchmarking
