@@ -1,5 +1,3 @@
-//Copyright (c) 2016 Kamil All Rights Reserved.
-
 "use strict";
 
 ////////////////////

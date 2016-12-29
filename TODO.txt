@@ -12,6 +12,6 @@
 - Mesh rendering
 - Depth of field
 - Cook-Torrance
-- Quasi Monte Carlo/Importance Sampling
+- AA with Stratified Sampling
 - Gamma, HDR, Bloom(?)
 - Photon mapping(?)
