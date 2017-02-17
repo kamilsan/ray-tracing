@@ -239,13 +239,12 @@ Scene.prototype =
 ////////////////////
 // Material
 ////////////////////
-function Material(color, kDiffuse, kSpecular, specularPower, kReflection)
+function Material(color, kDiffuse, kReflection, emittance)
 {
   this._color = color;
   this._kDiffuse = kDiffuse;
-  this._kSpecular = kSpecular;
-  this._specularPower = specularPower;
   this._kReflection = kReflection;
+  this._emittance = emittance;
 }
 
 Material.prototype =
@@ -254,15 +253,13 @@ Material.prototype =
 
   get color() { return this._color; },
   get diffuseFactor() { return this._kDiffuse; },
-  get specularFactor() { return this._kSpecular; },
-  get specularPower() { return this._specularPower; },
   get reflectionFactor() { return this._kReflection; },
+  get emittance() { return this._emittance; },
 
   set color(value) { this._color = value; },
   set diffuseFactor(value) { this._kDiffuse = value; },
-  set specularFactor(value) { this._kSpecular = value; },
-  set specularPower(value) { this._specularPower = value; },
-  set reflectionFactor(value) { this._kReflection = value; }
+  set reflectionFactor(value) { this._kReflection = value; },
+  set emittance(value) { this._emittance = value; }
 };
 
 
@@ -290,9 +287,9 @@ Attenuation.Default = new Attenuation(1, 0, 1);
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //                                            Lights
 //   inherits form Light class and have virtual methods:
-//  - { diffuse, specular } calcLighting(Vector intersectionPoint, Vector normal, Vector toEye),
+//  - { diffuse, attenuation } calcLighting(Vector intersectionPoint, Vector normal, Vector toEye),
 //  - Ray getShadowRay(Vector intersectionPoint)
-//  - bool isInShadow(Ray shadowRay, float t)
+//  - float occlusionTestLimit(Ray shadowRay)
 //  - float intensity (getter)
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 function DirectionalLight(direction, color, intensity)
@@ -319,26 +316,16 @@ DirectionalLight.prototype =
   calcLighting: function(intersectionPoint, normal, toEye)//virtual
   {
     var diffuse = Math.max(Vector.dot(this._direction.clone().mul(-1), normal), 0);
-    var specular = 0;
-    if(diffuse > 0)
-    {
-      var halfVector = toEye.clone().sub(this._direction).normalize();//toEye + (-direction)
-      specular = Math.max(Vector.dot(halfVector, normal), 0.0);
-    }
-
-    return { diffuse: diffuse, specular: specular, attenuation: 1 };
+    return { diffuse: diffuse, attenuation: 1 };
   },
-
   getShadowRay: function(intersectionPoint)//virtual
   {
     return new Ray(intersectionPoint.clone().add(this._direction.clone().mul(-0.00000001)),
                             this._direction.clone().mul(-1));
   },
-
-  isInShadow: function(shadowRay, t)//virtual
+  occlusionTestLimit: function(shadowRay)//virtual
   {
-    if(t <= 0) return false;
-    return true;
+    return -1;//no limit
   }
 };
 
@@ -349,7 +336,6 @@ function PointLight(position, color, intensity, attenuation)
   this._intensity = intensity;
   this._attenuation = attenuation;
 }
-
 PointLight.prototype =
 {
   constructor: PointLight,
@@ -376,32 +362,18 @@ PointLight.prototype =
                       this._attenuation.linear * length +
                       this._attenuation.constant);
 
-    var lambertian = Vector.dot(toLight, normal);
-    var specular = 0;
-    var diffuse = 0;
-    if(lambertian > 0)
-    {
-      diffuse = Math.max(lambertian, 0);
-      var halfVector = Vector.add(toEye, toLight).normalize();
-      specular = Math.max(Vector.dot(halfVector, normal), 0);
-    }
-
-    return { diffuse: diffuse, specular: specular, attenuation: attenuation };
+    var diffuse = Math.max(Vector.dot(toLight, normal), 0.0);
+    return { diffuse: diffuse, attenuation: attenuation };
   },
-
   getShadowRay: function(intersectionPoint)//virtual
   {
     var toLight = Vector.sub(this._position, intersectionPoint);
     return new Ray(intersectionPoint.clone().add(toLight.clone().normalize().mul(0.00000001)),
                             toLight);
   },
-
-  isInShadow: function(shadowRay, t)//virtual
+  occlusionTestLimit: function(shadowRay)//virtual
   {
-    if(t <= 0) return false;
-    var distSq = Vector.sub(this._position, shadowRay.origin).lengthSq();
-    if(t * t < distSq) return true;
-    else return false;
+    return Vector.sub(this._position, shadowRay.origin).length();
   }
 };
 
@@ -447,7 +419,6 @@ SpotLight.prototype =
                       this._attenuation.linear * length +
                       this._attenuation.constant);
     var diffuse = Math.max(Vector.dot(toLight, this._direction.clone().mul(-1)), 0.0);
-    var specular = 0;
     if(diffuse < this._cosAngle)
     {
       diffuse = 0;
@@ -455,12 +426,9 @@ SpotLight.prototype =
     else
     {
       diffuse = (diffuse - this._cosAngle) / this._cosAngle;
-
-      var halfVector = Vector.add(toEye, toLight).normalize();
-      specular = Math.max(Vector.dot(halfVector, normal), 0.0);
     }
 
-    return { diffuse: diffuse, specular: specular, attenuation: attenuation };
+    return { diffuse: diffuse, attenuation: attenuation };
   },
 
   getShadowRay: function(intersectionPoint)//virtual
@@ -469,13 +437,9 @@ SpotLight.prototype =
     return new Ray(intersectionPoint.clone().add(toLight.clone().normalize().mul(0.00000001)),
                             toLight);
   },
-
-  isInShadow: function(shadowRay, t)//virtual
+  occlusionTestLimit: function(shadowRay)//virtual
   {
-    if(t <= 0) return false;
-    var distSq = Vector.sub(this._position, shadowRay.origin).lengthSq();
-    if(t * t < distSq) return true;
-    else return false;
+    return Vector.sub(this._position, shadowRay.origin).length();
   }
 };
 ////////////////////////////////////////////////////////
@@ -484,25 +448,35 @@ SpotLight.prototype =
 //they should have this virtual methods:
 //  - Vector getNormalAt(Vector point)
 //  - float  intersects(Ray ray)
+//  - Vector getSample() //if finite
+//  - float getInversePDF() //if finite
 //They also have to have material with its getter
+//bool isFinite
 ///////////////////////////////////////////////////////
 function Sphere(center, radius, material)
 {
   this._center = center;
   this._radius = radius;
   this._material = material;
-}
 
+  this._invPDF = 4 * Math.PI * radius * radius;
+}
 Sphere.prototype =
 {
   constructor: Sphere,
+
+  isFinite: true,
 
   get center() { return this._center; },
   get radius() { return this._radius; },
   get material() { return this._material; },
 
   set center(value) { this._center = value; },
-  set radius(value) { this._radius = value; },
+  set radius(value)
+  {
+    this._radius = value;
+    this._invPDF = 4 * Math.PI * value * value;
+  },
   set material(value) { this._material = value; },
 
   intersects: function(ray)
@@ -522,6 +496,19 @@ Sphere.prototype =
   getNormalAt: function(point)
   {
     return point.clone().sub(this._center).div(this._radius);
+  },
+  getSample: function()
+  {
+    var phi = Math.random() * 2 * Math.PI;
+    var cosTheta = 1 - (2 * Math.random());
+    var sinTheta = Math.sqrt(1 - cosTheta * cosTheta);
+
+    return new Vector.add(this._center,
+      new Vector(this._radius * sinTheta * Math.cos(phi), this._radius * cosTheta, this._radius * sinTheta * Math.sin(phi)));
+  },
+  getInversePDF: function()
+  {
+    return this._invPDF;
   }
 };
 
@@ -531,10 +518,11 @@ function Plane(point, normal, material)
   this._normal = normal;
   this._material = material;
 }
-
 Plane.prototype =
 {
   constructor: Plane,
+
+  isFinite: false,
 
   get point() { return this._point; },
   get normal() { return this._normal; },
@@ -554,10 +542,81 @@ Plane.prototype =
     }
     return t;
   },
+  getNormalAt: function(point)//it is a virtual method
+  {
+    return this._normal;
+  }
+};
+
+function Rectangle(point, normal, tangent, sizeX, sizeY, material)
+{
+  this._point = point;
+  //Gram-Schmidt orthonormalization
+  this._normal = normal.clone().normalize();
+  this._tangent = tangent.clone().sub(this._normal.clone().mul(Vector.dot(tangent, this._normal))).normalize();
+  this._bitangent = this._normal.cross(this._tangent);
+
+  this._sizeX = sizeX;
+  this._sizeY = sizeY;
+
+  this._invPDF = sizeX * sizeY;
+
+  this._material = material;
+}
+Rectangle.prototype =
+{
+  constructor: Rectangle,
+
+  isFinite: true,
+
+  get point() { return this._point; },
+  get normal() { return this._normal; },
+  get tangent() { return this._tangent; },
+  get bitangent() { return this._bitangent; },
+  get sizeX() { return this._sizeX; },
+  get sizeY() { return this._sizeY; },
+  get material() { return this._material; },
+
+  set point(value) { this._point = value; },
+  set sizeX(value) { this._sizeX = value; this._invPDF = value * this._sizeY; },
+  set sizeY(value) { this._sizeY = value; this._invPDF = this._sizeX * value; },
+  set material(value) { this._material = value; },
+
+  intersects: function(ray)//virtual
+  {
+    var t = -1;
+    var denominator = Vector.dot(this._normal, ray.direction);
+    if(denominator !== 0)
+    {
+      t = -Vector.dot(this._normal, Vector.sub(ray.origin, this._point)) / denominator;
+    }
+    if(t > 0)
+    {
+      var intersectionPoint = ray.getPoint(t).sub(this._point);
+      var x = intersectionPoint.dot(this._tangent);
+      var y = intersectionPoint.dot(this._bitangent);
+      if(x < 0 || y < 0 || x > this._sizeX || y > this._sizeY) t = -1;
+    }
+    return t;
+  },
 
   getNormalAt: function(point)//it is a virtual method
   {
     return this._normal;
+  },
+
+  getSample: function()
+  {
+    var x = this._sizeX*Math.random();
+    var y = this._sizeY*Math.random();
+    var sample = this._point.clone();
+    sample.add(this._tangent.clone().mul(x));
+    sample.add(this._bitangent.clone().mul(y));
+    return sample;
+  },
+  getInversePDF: function()
+  {
+    return this._invPDF;
   }
 };
 
@@ -569,28 +628,42 @@ function Ellipse(center, normal, tangent, horizontalRadius, verticalRadius, mate
   //Gram-Schmidt orthonormalization
   this._normal = normal.clone().normalize();
   this._tangent = tangent.clone().sub(this._normal.clone().mul(Vector.dot(tangent, this._normal))).normalize();
+  this._bitangent = this._normal.cross(this._tangent);
 
+  this._invPDF = Math.PI * horizontalRadius * verticalRadius;
+
+  this._horizontalRadius = horizontalRadius;
+  this._verticalRadius = verticalRadius;
   this._horizontalRadiusSq = horizontalRadius * horizontalRadius;
   this._verticalRadiusSq = verticalRadius * verticalRadius;
   this._material = material;
 }
-
 Ellipse.prototype =
 {
   constructor: Ellipse,
 
+  isFinite: true,
+
   get center() { return this._center; },
   get normal() { return this._normal; },
   get tangent() { return this._tangent; },
-  get horizontalRadius() { return Math.sqrt(this._horizontalRadiusSq); },
-  get verticalRadius() { return Math.sqrt(this._verticalRadiusSq); },
+  get horizontalRadius() { return this._horizontalRadius; },
+  get verticalRadius() { return this._verticalRadius; },
   get material() { return this._material; },
 
   set center(value) { this._center = value; },
-  set normal(value) { this._normal = value; },
-  set tangent(value) { this._tangent = value; },
-  set horizontalRadius(value) { this._horizontalRadiusSq = value * value; },
-  set verticalRadius(value) { this._verticalRadiusSq = value * value; },
+  set horizontalRadius(value)
+  {
+    this._horizontalRadius = value;
+    this._horizontalRadiusSq = value * value;
+    this._invPDF = Math.PI * value * this._verticalRadius;
+  },
+  set verticalRadius(value)
+  {
+    this._verticalRadius = value;
+    this._verticalRadiusSq = value * value;
+    this._invPDF = Math.PI * this._horizontalRadius * value;
+  },
   set material(value) { this._material = value; },
 
   intersects: function(ray)//virtual
@@ -616,6 +689,21 @@ Ellipse.prototype =
   getNormalAt: function(point)//it is a virtual method
   {
     return this._normal;
+  },
+
+  getSample: function()
+  {
+    var angle = Math.random() * 2 * Math.PI;
+    var r = Math.sqrt(Math.random());
+    var x = Math.cos(angle) * r;
+    var y = Math.sin(angle) * r;
+
+    var relPoint = Vector.mul(this._tangent, x).add(Vector.mul(this._bitangent, y));
+    return relPoint.add(this._center);
+  },
+  getInversePDF: function()
+  {
+    return this._invPDF;
   }
 };
 
@@ -642,93 +730,168 @@ function createCoordinationSystem(normal)
   return { tangent: tangent, bitangent: bitangent };
 }
 
+
 //The name of the game!
 //TODO: Probably I should put more stuff in it and name this more fancy then just "RayTracer"
 var RayTracer = {};
-RayTracer.traceRay = function(ray, scene, camera, depth, mcDepth, samples)
+RayTracer.visabilityTest = function(ray, objects, tLimit)
+{
+  var t;
+  for(var i = 0; i < objects.length; ++i)
+  {
+    t = objects[i].intersects(ray);
+    if(t > 0 && (t < tLimit || tLimit < 0))
+    {
+      return { occlusion: true, obj: objects[i] };
+    }
+  }
+  return { occlusion: false, object: null };
+}
+
+//Direct Lighting - Area Light (emissive surface)
+RayTracer.sampleAreaLights = function(scene, emissiveObjects, intersectionPoint, normal, samples)
 {
   var color = new Vector(0, 0, 0);
+  if(samples > 0)
+  {
+    for(var i = 0; i < emissiveObjects.length; ++i)
+    {
+      var light = emissiveObjects[i];
+      var sampledColor = new Vector(0, 0, 0);
+      for(var n = 0; n < samples; ++n)
+      {
+        var sample = light.getSample();
+        var dir = Vector.sub(sample, intersectionPoint);
 
+        var len = dir.length();
+        dir.mul(1 / len);
+        len -= 0.0001;
+
+        var ray = new Ray(intersectionPoint.clone().add(dir.clone().mul(0.000001)), dir);
+        var visable = !RayTracer.visabilityTest(ray, scene.objects, len).occlusion;
+        if(visable)
+        {
+          var cosOmega = Math.abs(dir.dot(normal));//TODO: DUNNO what to do with absolute value
+          var cosSample = Math.abs(dir.clone().mul(-1).dot(light.getNormalAt(sample)));
+          var k = cosOmega * cosSample / (len * len);
+          sampledColor.add(light.material.emittance.clone().mul(k));
+        }
+      }
+      sampledColor.mul(light.getInversePDF() / (samples * Math.PI));
+      color.add(sampledColor);
+    }
+  }
+  return color;
+}
+
+//Path tracing below!
+//It uses MC & Importance Sampling to estimate integral in rendering equation
+RayTracer.indirectLighting = function(scene, camera, intersectionPoint, normal, options)
+{
+  var indirectLighting = new Vector(0, 0, 0);
+
+  if(options.MC_SAMPLES > 0 && options.MC_DEPTH > 0)
+  {
+    var basis = createCoordinationSystem(normal);
+    var cosTheta;
+    var sampleVector, sampleTransformed, mcRay;
+    for(var i = 0; i < options.MC_SAMPLES; ++i)
+    {
+      sampleVector = getCosineWeightedSample(Math.random(), Math.random());
+      sampleTransformed = new Vector(sampleVector.x * basis.tangent.x + sampleVector.y * normal.x + sampleVector.z * basis.bitangent.x,
+                                     sampleVector.x * basis.tangent.y + sampleVector.y * normal.y + sampleVector.z * basis.bitangent.y,
+                                     sampleVector.x * basis.tangent.z + sampleVector.y * normal.z + sampleVector.z * basis.bitangent.z);
+      mcRay = new Ray(intersectionPoint.clone().add(sampleTransformed.clone().mul(0.000001)), sampleTransformed);
+
+      indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, {
+        RECURSION_DEPTH: options.RECURSION_DEPTH,
+        MC_DEPTH: options.MC_DEPTH - 1,
+        MC_SAMPLES: options.MC_SAMPLES,
+        AREA_LIGHT_SAMPLES: options.AREA_LIGHT_SAMPLES
+      }));
+    }
+    indirectLighting.mul(1 / options.MC_SAMPLES);
+  }
+  return indirectLighting;
+}
+
+RayTracer.traceRay = function(ray, scene, camera, options)
+{
+  var color = new Vector(0, 0, 0);
   //Depth test - finding closest object
   var minT = 1e12, currentT;
   var object = null;
+  var objectI;
   for(var i = 0; i < scene.objects.length; ++i)
   {
     currentT = scene.objects[i].intersects(ray);
     if(currentT > 0 && currentT < minT)
     {
+      objectI = i;
       minT = currentT;
       object = scene.objects[i];
     }
   }
 
-  if(object !== null)
+  var emissiveObjects = [];
+  for(var i = 0; i < scene.objects.length; ++i)
   {
-    var intersectionPoint = ray.getPoint(minT);
-    var normal = object.getNormalAt(intersectionPoint);
-
-    var toEye = camera.position.clone().sub(intersectionPoint).normalize();
-
-    if(object.material.reflectionFactor > 0 && depth > 0)
-    {
-      var viewReflected = Vector.reflect(toEye.clone().mul(-1), normal);
-      //below: small bias to prevent self intersection
-      var reflectionRay = new Ray(intersectionPoint.clone().add(viewReflected.clone().mul(0.00000001)), viewReflected);
-      var reflectionColor = RayTracer.traceRay(reflectionRay, scene, camera, depth - 1, mcDepth, samples);
-      color.add(reflectionColor.mul(object.material.reflectionFactor));
-    }
-    color.add(Vector.componetesMul(object.material.color, scene.ambient));
-
-    var albedo = object.material.color.clone().mul(object.material.diffuseFactor);
-
-    //Path tracing below!
-    //It uses MC & Importance Sampling for estimating integral in rendering equation
-    var indirectLighting = new Vector(0, 0, 0);
-    if(mcDepth > 0 && samples > 0)
-    {
-      var basis = createCoordinationSystem(normal);
-      var cosTheta;
-      var sampleVector, sampleTransformed, mcRay;
-      for(var i = 0; i < samples; ++i)
-      {
-        sampleVector = getCosineWeightedSample(Math.random(), Math.random());
-        sampleTransformed = new Vector(sampleVector.x * basis.tangent.x + sampleVector.y * normal.x + sampleVector.z * basis.bitangent.x,
-                                       sampleVector.x * basis.tangent.y + sampleVector.y * normal.y + sampleVector.z * basis.bitangent.y,
-                                       sampleVector.x * basis.tangent.z + sampleVector.y * normal.z + sampleVector.z * basis.bitangent.z);
-        mcRay = new Ray(intersectionPoint.clone().add(sampleTransformed.clone().mul(0.000001)), sampleTransformed);
-        indirectLighting.add(RayTracer.traceRay(mcRay, scene, camera, depth, mcDepth - 1, samples));
-      }
-      indirectLighting.mul(1 / samples);
-      color.add(Vector.componetesMul(albedo, indirectLighting));
-    }
-
-    //Direct illumination
-    for(var n = 0; n < scene.lights.length; ++n)
-    {
-      var shadowRay = scene.lights[n].getShadowRay(intersectionPoint);
-      var inShadow = false;
-      //Searching for objects occluding light
-      for(var i = 0; i < scene.objects.length; ++i)
-      {
-        var t = scene.objects[i].intersects(shadowRay);
-        if(scene.lights[n].isInShadow(shadowRay, t))
-        {
-          inShadow = true;
-          break;
-        }
-      }
-      if(!inShadow)
-      {
-        var lighting = scene.lights[n].calcLighting(intersectionPoint, normal, toEye);
-
-        color.add(Vector.componetesMul(scene.lights[n].color, albedo).mul(
-          lighting.diffuse * lighting.attenuation * scene.lights[n].intensity / Math.PI));
-        color.add(Vector.mul(scene.lights[n].color, scene.lights[n].intensity *
-          object.material.specularFactor * lighting.attenuation * Math.pow(lighting.specular, object.material.specularPower)));
-      }
-    }
-    //color.clamp(0.0, 1.0);
+    if(i == objectI) continue;
+    else if(scene.objects[i].isFinite && scene.objects[i].material.emittance.lengthSq() > 0.3)
+      emissiveObjects.push(scene.objects[i]);
   }
+
+  if(object == null) return new Vector(0, 0, 0);
+
+  var indirectLighting = new Vector(0, 0, 0);
+  var directLighting = new Vector(0, 0, 0);
+
+  var intersectionPoint = ray.getPoint(minT);
+  var normal = object.getNormalAt(intersectionPoint);
+  var toEye = camera.position.clone().sub(intersectionPoint).normalize();
+  var albedo = object.material.color.clone().mul(object.material.diffuseFactor);
+
+  //Direct illumination
+  for(var n = 0; n < scene.lights.length; ++n)
+  {
+    //Searching for objects occluding light
+    var shadowRay = scene.lights[n].getShadowRay(intersectionPoint);
+    var inShadow = RayTracer.visabilityTest(shadowRay, scene.objects,
+      scene.lights[n].occlusionTestLimit(shadowRay)).occlusion;
+
+    if(!inShadow)
+    {
+      var lighting = scene.lights[n].calcLighting(intersectionPoint, normal, toEye);
+
+      directLighting.add(scene.lights[n].color.clone().mul(
+        lighting.diffuse * lighting.attenuation * scene.lights[n].intensity / Math.PI))
+    }
+  }
+  if(object.material.reflectionFactor > 0 && options.RECURSION_DEPTH > 0)
+  {
+    var viewReflected = Vector.reflect(toEye.clone().mul(-1), normal);
+    //below: small bias to prevent self intersection
+    var reflectionRay = new Ray(intersectionPoint.clone().add(viewReflected.clone().mul(0.00000001)), viewReflected);
+
+    var reflectionColor = RayTracer.traceRay(reflectionRay, scene, camera,
+      {
+        RECURSION_DEPTH: options.RECURSION_DEPTH - 1,
+        MC_DEPTH: options.MC_DEPTH,
+        MC_SAMPLES: options.MC_SAMPLES,
+        AREA_LIGHT_SAMPLES: options.AREA_LIGHT_SAMPLES
+      });
+
+    color.add(reflectionColor.mul(object.material.reflectionFactor));
+  }
+  color.add(Vector.componetesMul(object.material.color, scene.ambient));
+
+  //TODO: change it when specular reflections will be implemented
+  directLighting.add(RayTracer.sampleAreaLights(scene, emissiveObjects, intersectionPoint, normal, options.AREA_LIGHT_SAMPLES));
+  indirectLighting = RayTracer.indirectLighting(scene, camera, intersectionPoint, normal, options);
+
+  //TODO: clamping does not preserve color
+  color.add(object.material.emittance.clone().clamp(0.0, 1.0));
+  color.add(Vector.componetesMul(directLighting.add(indirectLighting), albedo));
   return color;
 };
 
@@ -746,8 +909,8 @@ RayTracer.Renderer = function(width, height)
   this._RECURSION_DEPTH = 8;
   this._MC_DEPTH = 1;
   this._MC_SAMPLES = 32;
+  this._AREA_LIGHT_SAMPLES = 64;
 
-  //Experimental!
   this._postprocess = function(color, x, y, width, height) {};
 }
 
@@ -757,12 +920,13 @@ RayTracer.Renderer.prototype =
 
   get width() { return this._width; },
   get height() { return this._height; },
-  get postprocess() { return this._postprocess; },//Experimental!
+  get postprocess() { return this._postprocess; },
   get SSAA() { return this._SSAA; },
   get SSAA_SAMPLES() { return this._SSAA_SAMPLES; },
   get RECURSION_DEPTH() { return this._RECURSION_DEPTH; },
   get MC_DEPTH() { return this._MC_DEPTH; },
   get MC_SAMPLES() { return this._MC_SAMPLES; },
+  get AREA_LIGHT_SAMPLES() { return this._AREA_LIGHT_SAMPLES; },
 
   set width(value)
   {
@@ -776,15 +940,28 @@ RayTracer.Renderer.prototype =
     this._aspectRatio = this._width / this._height;
     this._halfHeight = this._height / 2;
   },
-  set postprocess(value) { this._postprocess = value; },//Experimental!
+  set postprocess(value) { this._postprocess = value; },
   set SSAA(value) { this._SSAA = value; },
   set SSAA_SAMPLES(value) { this._SSAA_SAMPLES = value; },
   set RECURSION_DEPTH(value) { this._RECURSION_DEPTH = value; },
   set MC_DEPTH(value) { this._MC_DEPTH = value; },
   set MC_SAMPLES(value) { this._MC_SAMPLES = value; },
+  set AREA_LIGHT_SAMPLES(value) { this._AREA_LIGHT_SAMPLES = value; },
 
   render: function(scene, camera)
   {
+    return this.renderPreview(scene, camera, 0, 0, this._width, this._height);
+  },
+  renderPreview: function(scene, camera, x0, y0, prevWidth, prevHeight)
+  {
+    if(x0 < 0) x0 = 0;
+    else if(width + x0 > this._width) prevWidth = this._width - x0;
+    if(y0 < 0) y0 = 0;
+    else if(height + y0 > this._height) prevHeight = this._height - y0;
+
+    var x1 = x0 + prevWidth;
+    var y1 = y0 + prevHeight;
+
     var canvas = document.createElement("canvas");
     var width = canvas.width = this._width;
     var height = canvas.height = this._height;
@@ -794,10 +971,23 @@ RayTracer.Renderer.prototype =
 
     var cameraRay;
     var scaledX, scaledY;
+    var mcDepth;
+
+    var options =
+    {
+      RECURSION_DEPTH: this._RECURSION_DEPTH,
+      MC_DEPTH: this._MC_DEPTH,
+      MC_SAMPLES: this._MC_SAMPLES,
+      AREA_LIGHT_SAMPLES: this._AREA_LIGHT_SAMPLES
+    };
+
     for(var y = 0; y < height; ++y)
     {
       for(var x = 0; x < width; ++x)
       {
+        if(x < x0 || x > x1 || y < y0 || y > y1)
+          options.MC_SAMPLES = 0;
+
         var i = (y * width + x) * 4;
         var color = new Vector(0, 0, 0);
         if(i % 200 === 0)
@@ -813,7 +1003,7 @@ RayTracer.Renderer.prototype =
             scaledY = -(y - this._halfHeight + jitterY) / this._halfHeight;
 
             cameraRay = camera.getCameraRay(scaledX, scaledY);
-            color = color.add(RayTracer.traceRay(cameraRay, scene, camera, this._RECURSION_DEPTH, this._MC_DEPTH, this._MC_SAMPLES));
+            color = color.add(RayTracer.traceRay(cameraRay, scene, camera, options));
 
             this._postprocess(color, x, y, this._width, this._height);
           }
@@ -825,7 +1015,7 @@ RayTracer.Renderer.prototype =
           scaledY = -(y - this._halfHeight) / this._halfHeight;
 
           cameraRay = camera.getCameraRay(scaledX, scaledY);
-          color = RayTracer.traceRay(cameraRay, scene, camera, this._RECURSION_DEPTH, this._MC_DEPTH, this._MC_SAMPLES);
+          color = RayTracer.traceRay(cameraRay, scene, camera, options);
 
           this._postprocess(color, x, y, this._width, this._height);
           color.mul(255);

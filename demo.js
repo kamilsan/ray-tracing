@@ -40,30 +40,38 @@ function webLoad()
   var sphereMaterial = new Material(
     new Vector(1.0, 1.0, 1.0),//color
     0.01,//diffuse
-    0.0,//specular
-    124,//specular power
-    0.99//reflectivity
+    0.99,//reflectivity
+    new Vector(0, 0, 0)
   );
   var wallMaterial1 = new Material(
     new Vector(1.0, 0.5, 0.5),
     1 / Math.PI,
-    0.01,
-    16,
-    0.0
+    0.0,
+    new Vector(0, 0, 0)
   );
   var wallMaterial2 = new Material(
     new Vector(0.5, 0.5, 1.0),
     1 / Math.PI,
-    0.01,
-    16,
-    0.0
+    0.0,
+    new Vector(0, 0, 0)
   );
   var floorMaterial = new Material(
     new Vector(1.0, 1.0, 1.0),
     1 / Math.PI,
-    0.01,
-    16,
-    0.0
+    0.0,
+    new Vector(0, 0, 0)
+  );
+  var lightMaterial = new Material(
+    new Vector(1, 1, 1),
+    1 / Math.PI,
+    0,
+    new Vector(120, 120, 137)
+  );
+  var lightMaterial2 = new Material(
+    new Vector(1, 1, 1),
+    1 / Math.PI,
+    0,
+    new Vector(150, 150, 167)
   );
 
   var scene = new Scene(new Vector(0, 0, 0));//No need to use ambient light! Yay!
@@ -110,26 +118,56 @@ function webLoad()
     0.5,
     sphereMaterial
   ));
+
+  /*
   scene.addLight(new PointLight(
     new Vector(0, 0.9, 0),
     new Vector(0.9, 0.9, 1),
     36,
     Attenuation.Default
   ));
+  scene.addObject(new Ellipse(
+    new Vector(0, 1.999999, 0),//1.999999
+    new Vector(0, -1, 0),
+    new Vector(1, 0, 0),
+    0.5,
+    0.4,
+    lightMaterial
+  ));
+  scene.addObject(new Sphere(
+    new Vector(-0.25, 1.55, 0.85),
+    0.1,
+    lightMaterial
+  ));
+  scene.addObject(new Sphere(
+    new Vector(0.25, 1.55, 0.95),
+    0.1,
+    lightMaterial
+  ));
+  */
+  scene.addObject(new Rectangle(
+    new Vector(0-0.4, 1.999999, 0-0.3),
+    new Vector(0, -1, 0),
+    new Vector(1, 0, 0),
+    0.8,
+    0.6,
+    lightMaterial2
+  ));
 
   //Initializing renderer and some settings
   var renderer = new RayTracer.Renderer(window.innerWidth, window.innerHeight);
-  renderer.SSAA = false;
-  renderer.SSAA_SAMPLES = 64;
-  renderer.RECURSION_DEPTH = 16;
-  renderer.MC_DEPTH = 1;
-  renderer.MC_SAMPLES = 216;
+  renderer.SSAA = true;
+  renderer.SSAA_SAMPLES = 16;
+  renderer.RECURSION_DEPTH = 6;
+  renderer.MC_DEPTH = 2;
+  renderer.MC_SAMPLES = 6;
+  renderer.AREA_LIGHT_SAMPLES = 12;
   //renderer.postprocess = vignetting;
 
   //This is for benchmarking
   var time = Date.now();
 
-  var canvas = renderer.render(scene, camera);
+  var canvas = renderer.render(scene, camera, 0, 0);
 
   var deltaTime = (Date.now() - time) / 1000;
   console.log("Rendered in " + deltaTime.toFixed(3) + "s");
