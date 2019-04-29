@@ -100,5 +100,3 @@ renderer.AREA_LIGHT_SAMPLES = 12;
 var canvas = renderer.render(scene, camera);
 document.body.appendChild(canvas);
 ```
-
-Work in progress.
