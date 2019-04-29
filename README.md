@@ -1,5 +1,5 @@
 # Ray Tracing
-This is a basic recursive ray tracing that currently allows you to render scenes with multiple lights and objects. Every object has its own material, that specify things such as albedo, reflectivity index and emittance. It can use **SSAA** if desired (Box filter), with as many samples as you want. **Lambert's BRDF** is used.
+This is a basic recursive ray tracer that I wrote about 1 year ago. Currently it allows you to render scenes with multiple lights and objects. Every object has its own material, that specify things such as albedo, reflectivity index and emittance. It can use **SSAA** if desired (Box filter), with as many samples as you want. **Lambert's BRDF** is used.
 
 Indirect illumination uses Monte Carlo estimator with **Importance Sampling (cosine weighted)**. Path lenghts can be chosen (MC_DEPTH), as well as number of samples (MC_SAMPLES).
 
